@@ -25,36 +25,57 @@ class Tracker:
         # Initialize tracker with scanning offset (row_offset, col_offset),
         # scanning border (row_border, col_border), target bound offset,
         # and gradient threshhold
+
         self.__targets = []
+
+        # (row_offset, col_offset) responsible for determining the distance
+        # between samples within the global search.
         self.__scan_offset = scan_offset
+
+        # (row_border, col_border) giving a margin around the image that is not
+        # searched (due to distortion of the fisheye lens)
         self.__border = scan_border
+
+        # offset around localized feature search that determines how far outside
+        # the bounds of the previous layer we should search
         self.__target_offset = target_offset
+
+        # Threshhold for what we consider to be a significant gradient
         self.__threshhold = threshhold
 
     def get_target_centers(self):
+        # Return the center of all tracked targets
         return [t.get_center() for t in self.__targets]
 
     def scan(self, image):
         # Scan image for target. Scans horizontally from top to bottom
         for r in range(self.__border[0], image.shape[0] - self.__border[0], self.__scan_offset[0]):
             for c in range(self.__border[1], image.shape[1] - self.__border[1], self.__scan_offset[1]):
+
+                # If we find a significant rising gradient (left side of the cross),
+                # start a localized search to distinguish features from false positives
                 if gradient(image[r,c-self.__scan_offset[1]], image[r,c]) > self.__threshhold:
+
+                    # (DEBUG) Turn the significant pixel red in the image
                     # try:
                     #     self.__rgb[r,c] = [255,0,0]
                     # except:
                     #     None
 
+                    # If the localized search finds a target, stop the global search
                     if self.pinpoint_target(image, r, c):
                         return
 
     def update_targets(self, image):
+        # For task 3
         for t in self.__targets:
             t.update(image)
 
     def pinpoint_target(self, image, row, col):
         # Pinpoint the target center given the triggering index
 
-        # Smaller scan offset for the localized search
+        # Define a smaller scan offset for the localized search so we can detect
+        # finer features
         scan_offset = [int(self.__scan_offset[0] / 2), int(self.__scan_offset[1] / 2)]
 
         # Column numbers of the vertical bar top and bottom in the order:
@@ -65,23 +86,41 @@ class Tracker:
         top = None
         bottom = None
 
+        # Keep track of the minimum intensity so we know what intensity black is
+        # regardless of color distortion
         min_intensity = 255
 
-        # Bar width of previous row which is update to track the bar
+        # Bar width of previous row which is updated to track the bar, even when angled.
+        # Search starts at the column of the detected feature with offset on
+        # both sides.
         left_right = [col - self.__target_offset, col + self.__target_offset]
 
+        # Iterate through the rows until the bottom of the image.
         for r in range(row - self.__target_offset, image.shape[0], scan_offset[0]):
 
+            # If our search goes outside of the boundaries, return.
             if r < self.__border[0] or r > (image.shape[0] - self.__border[0]):
                 return False
 
+            # Per row, keep track of whether the left edge was triggered
             edge_trigger = False
+
+            # Keep track whether either gradient was triggered so we know if we
+            # are still in the bounds of the object
             cross_encounter = False
+
+            # Keep track of the minimum row intensity to know whether the row
+            # contained a black pixel or not.
             min_row_intensity = 255
+
+            # Iterate between the position of the previous layer, accounting for
+            # diagonal lines with the offset.
             for c in range(left_right[0] - self.__target_offset, left_right[1] + self.__target_offset, scan_offset[1]):
 
+                # If the horizontal bar goes outside the boundaries, return
                 if c < self.__border[1] or c > (image.shape[1] - self.__border[1]):
                     return False
+
                 # Encounter left edge on first rising gradient
                 if gradient(image[r,c-scan_offset[1]], image[r,c]) > self.__threshhold:
                     if not edge_trigger:
@@ -89,8 +128,11 @@ class Tracker:
                         cross_encounter = True
                         left_right[0] = c
 
-                        # Color rising edge blue
-                        self.__rgb[r,c] = [0,0,255]
+                        # (DEBUG) Color rising edge blue
+                        try:
+                            self.__rgb[r,c] = [0,0,255]
+                        except:
+                            None
 
                         # Define top for first edge hit
                         if not top:
@@ -103,8 +145,11 @@ class Tracker:
                         left_right[1] = c
                         cross_encounter = True
 
-                        # Color falling edge green
-                        self.__rgb[r,c] = [0,255,0]
+                        # (DEBUG) Color falling edge green
+                        try:
+                            self.__rgb[r,c] = [0,255,0]
+                        except:
+                            None
 
                         # Mark the top right corner of the bar
                         if top and not vbar_bounds[1]:
@@ -118,19 +163,22 @@ class Tracker:
                     if min_row_intensity < min_intensity:
                         min_intensity = min_row_intensity
 
-            # If a black pixel was not encountered in this row
+            # If a black pixel was not encountered in this row, mark the bottom
             if top and not ((min_row_intensity - min_intensity) < self.__threshhold) and not cross_encounter:
                 bottom = r - scan_offset[0]
                 vbar_bounds[2] = left_right[0]
                 vbar_bounds[3] = left_right[1]
                 break
 
-        print(vbar_bounds)
-
+        # If all of the features of the vertical bar were not detected, the feature
+        # is probably not a cross
         if not top or not bottom or not all(vbar_bounds):
             return False
 
-        # Draw bars on the top and bottom of the vertical bar
+        # (DEBUG)
+        print(vbar_bounds)
+
+        # (DEBUG) Draw red bars on the top and bottom of the vertical bar
         try:
             self.__rgb[top,vbar_bounds[0]:vbar_bounds[1]] = [255,0,0]
             self.__rgb[bottom,vbar_bounds[2]:vbar_bounds[3]] = [255,0,0]
@@ -140,39 +188,33 @@ class Tracker:
         left = None
         right = None
 
-        # center = (top + bottom) / 2
+        center = (top + bottom) / 2
 
         # 1. find horizontal bar - start from center -> move left within radius
         # 2. if no bar found within the radius, immediately return False
 
-        # self.__rgb[top,:] = [255,0,0]
-        # self.__rgb[bottom,:] = [255,0,0]
-        # print(vbar_bounds)
-        # try:
-        #     self.__rgb[top,:] = [255,0,0]
-        #     self.__rgb[:,vbar_bounds[0] = [0,0,255]
-        #     self.__rgb[:,vbar_bounds[1] = [0,255,0]
-        # except:
-        #     None
-
         return True
 
     def attach_rgb(self, rgb):
-        # For debugging purposes
+        # Link the RGB to the class object so we can draw on it.
         self.__rgb = rgb
 
 
-tracker = Tracker((2,2), (10,10), 2, 15)
+tracker = Tracker((2,2), (10,10), 2, 35)
 
 im = np.array(imageio.imread("tracking_dark.jpg"))
+
+# Downsample the image to the (approximate) MBot resolution
 im = im[::5,::5]
+
 im = im[100:300,100:300]
 # im = im[600:1000,800:1500]
 
+
 gray = im.mean(2)
-print(gray.shape)
-gray = gray - scipy.ndimage.gaussian_filter(gray, 90)
-print(math.floor(gray.shape[0]*0.04))
+
+# Probably not necessary, but use a sharpening filter to alias the cross
+# gray = gray - scipy.ndimage.gaussian_filter(gray, 50)
 
 plt.figure()
 plt.title('Image')
