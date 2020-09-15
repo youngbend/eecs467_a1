@@ -1,5 +1,10 @@
 import numpy as np, matplotlib as mpl, matplotlib.pyplot as plt
 import imageio
+import scipy.ndimage
+
+def gradient(A, B):
+    # Calculate an approximate gradient between two pixels values
+    return A - B
 
 class Target:
     def __init__(self, x, y):
@@ -15,15 +20,15 @@ class Target:
         return (self.__center_x, self.__center_y)
 
 class Tracker:
-    def __init__(self, scan_offset, scan_border, target_offset, contrast_threshhold):
+    def __init__(self, scan_offset, scan_border, target_offset, threshhold):
         # Initialize tracker with scanning offset (row_offset, col_offset),
         # scanning border (row_border, col_border), target bound offset,
-        # and contrast_threshhold
+        # and gradient threshhold
         self.__targets = []
         self.__scan_offset = scan_offset
         self.__border = scan_border
         self.__target_offset = target_offset
-        self.__contrast_threshhold = contrast_threshhold
+        self.__threshhold = threshhold
 
     def get_target_centers(self):
         return [t.get_center() for t in self.__targets]
@@ -32,10 +37,14 @@ class Tracker:
         # Scan image for target. Scans horizontally from top to bottom
         for r in range(self.__border[0], image.shape[0] - self.__border[0], self.__scan_offset[0]):
             for c in range(self.__border[1], image.shape[1] - self.__border[1], self.__scan_offset[1]):
-                if Tracker.contrast_ratio(image[r,c-self.__scan_offset[1]], image[r,c]) > self.__contrast_threshhold:
+                if gradient(image[r,c-self.__scan_offset[1]], image[r,c]) > self.__threshhold:
+                    try:
+                        self.__rgb[r,c] = [255,0,0]
+                    except:
+                        continue
+
                     if self.pinpoint_target(image, r, c):
                         return
-                    # image[r,c-self.__scan_offset[1]] = [255,0,0]
 
     def update_targets(self, image):
         for t in self.__targets:
@@ -49,7 +58,7 @@ class Tracker:
         for r in range(row - self.__target_offset, image.shape[0]):
             edge_trigger = [False, False]
             for c in range(left_right[0] - self.__target_offset, left_right[1] + self.__target_offset):
-                if Tracker.contrast_ratio(image[r,c-1], image[r,c]) > self.__contrast_threshhold:
+                if gradient(image[r,c-1], image[r,c]) > self.__threshhold:
                     if not edge_trigger[0]:
                         edge_trigger[0] = True
                         left_right[0] = c
@@ -60,13 +69,13 @@ class Tracker:
                         left_right[1] = c
                         if not top:
                             top = r
-                    
+
 
         left = None
         right = None
-        
-        center = (top + bottom) / 2
-        
+
+        # center = (top + bottom) / 2
+
         # 1. find horizontal bar - start from center -> move left within radius
         # 2. if no bar found within the radius, immediately return False
 
@@ -74,32 +83,26 @@ class Tracker:
         # image[bottom,:] = [255,0,0]
         return True
 
-    def luminocity(p):
-        pix = p / 255.0
-        transform = np.vectorize(lambda x: (x / 12.92) if (x <= 0.03928) else (((x + 0.055) / 1.055)**2.4))
-        pix = transform(pix)
-        coefs = np.array([0.2126, 0.7152, 0.0722])
-        return np.dot(coefs, pix)
-
-    def contrast_ratio(A, B):
-        # Calculate the contrast ratio between two np.array pixels
-        lumA = Tracker.luminocity(A)
-        lumB = Tracker.luminocity(B)
-        return (lumA + 0.05) / (lumB + 0.05) if lumA > lumB else (lumB + 0.05) / (lumA + 0.05)
+    def attach_rgb(self, rgb):
+        # For debugging purposes
+        self.__rgb = rgb
 
 
-tracker = Tracker((2,2), (10,10), 5, 1.7)
+tracker = Tracker((2,2), (10,10), 5, 40)
 
 im = np.array(imageio.imread("tracking_dark.jpg"))
 im = im[::5,::5]
-im = im[100:300,100:300]
+# im = im[100:300,100:300]
+
+gray = im.mean(2)
 
 plt.figure()
 plt.title('Image')
 plt.axis('off')
-plt.imshow(im)
+plt.imshow(gray, cmap='gray')
 
-tracker.scan(im)
+tracker.attach_rgb(im)
+tracker.scan(gray)
 
 plt.figure()
 plt.title('High contrast')
