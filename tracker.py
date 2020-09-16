@@ -63,7 +63,9 @@ class Tracker:
                     #     None
 
                     # If the localized search finds a target, stop the global search
-                    if self.pinpoint_target(image, r, c):
+                    is_target, center_row, center_column = self.pinpoint_target(image, r, c)
+                    if is_target:
+                        self.__targets.append(Target(center_row, center_column))
                         return
 
     def update_targets(self, image):
@@ -76,7 +78,7 @@ class Tracker:
 
         # Define a smaller scan offset for the localized search so we can detect
         # finer features
-        scan_offset = [int(self.__scan_offset[0] / 2), int(self.__scan_offset[1] / 2)]
+        scan_offset = [math.ceil(self.__scan_offset[0] / 2), math.ceil(self.__scan_offset[1] / 2)]
 
         # Column numbers of the vertical bar top and bottom in the order:
         # [top_left, top_right, bottom_left, bottom_right]
@@ -100,7 +102,7 @@ class Tracker:
 
             # If our search goes outside of the boundaries, return.
             if r < self.__border[0] or r > (image.shape[0] - self.__border[0]):
-                return False
+                return (False, 0, 0)
 
             # Per row, keep track of whether the left edge was triggered
             edge_trigger = False
@@ -119,13 +121,13 @@ class Tracker:
 
                 # If the horizontal bar goes outside the boundaries, return
                 if c < self.__border[1] or c > (image.shape[1] - self.__border[1]):
-                    return False
+                    return (False, 0, 0)
 
                 # Encounter left edge on first rising gradient
                 if gradient(image[r,c-scan_offset[1]], image[r,c]) > self.__threshhold:
+                    cross_encounter = True
                     if not edge_trigger:
                         edge_trigger = True
-                        cross_encounter = True
                         left_right[0] = c
 
                         # (DEBUG) Color rising edge blue
@@ -140,10 +142,10 @@ class Tracker:
                             vbar_bounds[0] = c
 
                 # Encountered right edge on falling gradient after left edge
-                elif gradient(image[r,c-1], image[r,c]) < -self.__threshhold:
+                elif gradient(image[r,c-scan_offset[1]], image[r,c]) < -self.__threshhold:
+                    cross_encounter = True
                     if edge_trigger:
                         left_right[1] = c
-                        cross_encounter = True
 
                         # (DEBUG) Color falling edge green
                         try:
@@ -173,43 +175,221 @@ class Tracker:
         # If all of the features of the vertical bar were not detected, the feature
         # is probably not a cross
         if not top or not bottom or not all(vbar_bounds):
-            return False
+            return (False, 0, 0)
 
-        # (DEBUG)
-        print(vbar_bounds)
-
-        # (DEBUG) Draw red bars on the top and bottom of the vertical bar
-        try:
-            self.__rgb[top,vbar_bounds[0]:vbar_bounds[1]] = [255,0,0]
-            self.__rgb[bottom,vbar_bounds[2]:vbar_bounds[3]] = [255,0,0]
-        except:
-            None
+        # If the top and bottom were not similar in width
+        if abs((vbar_bounds[1] - vbar_bounds[0]) - (vbar_bounds[3] - vbar_bounds[2])) > self.__target_offset:
+            return (False, 0, 0)
 
         left = None
         right = None
 
-        center = (top + bottom) / 2
+        center_row = (top + bottom) // 2
+        center_column = int(np.mean(vbar_bounds))
+        column_radius = (vbar_bounds[1] - vbar_bounds[0]) // 2
 
-        # 1. find horizontal bar - start from center -> move left within radius
-        # 2. if no bar found within the radius, immediately return False
+        # [top_left, bottom_left, top_right, bottom_right]
+        hbar_bounds = [None, None, None, None]
 
-        return True
+        # Perform a vertical scan from the center until we find the left edge
+        up_down = [center_row - column_radius, center_row + column_radius]
+        for c in range(center_column, 0, -scan_offset[1]):
+
+            if c < self.__border[1]:
+                return (False, 0, 0)
+
+            edge_trigger = False
+            cross_encounter = False
+            min_col_intensity = 255
+
+            for r in range(up_down[0] - self.__target_offset, up_down[1] + self.__target_offset, scan_offset[0]):
+
+                if r < self.__border[0] or r > (image.shape[0] - self.__border[0]):
+                    return (False, 0, 0)
+
+                if gradient(image[r-scan_offset[0],c], image[r,c]) > self.__threshhold:
+                    cross_encounter = True
+                    if not edge_trigger:
+                        edge_trigger = True
+                        up_down[0] = r
+
+                        # (DEBUG) Color rising edge blue
+                        try:
+                            self.__rgb[r,c] = [0,0,255]
+                        except:
+                            None
+
+                elif gradient(image[r-scan_offset[0],c], image[r,c]) < -self.__threshhold:
+                    cross_encounter = True
+                    if edge_trigger:
+                        up_down[1] = r
+
+                        # (DEBUG) Color falling edge green
+                        try:
+                            self.__rgb[r,c] = [0,255,0]
+                        except:
+                            None
+
+                        continue
+
+                if image[r,c] < min_col_intensity:
+                    min_col_intensity = image[r,c]
+
+            if not cross_encounter and abs(min_col_intensity - min_intensity) > self.__threshhold:
+                left = c
+                hbar_bounds[0] = up_down[0]
+                hbar_bounds[1] = up_down[1]
+                break
+
+        # Perform a vertical scan from the center until we find the right edge
+        up_down = [center_row - column_radius, center_row + column_radius]
+        for c in range(center_column, image.shape[1], scan_offset[1]):
+
+            if c > (image.shape[1] - self.__border[1]):
+                return (False, 0, 0)
+
+            edge_trigger = False
+            cross_encounter = False
+            min_col_intensity = 255
+
+            for r in range(up_down[0] - self.__target_offset, up_down[1] + self.__target_offset, scan_offset[0]):
+
+                if r < self.__border[0] or r > (image.shape[0] - self.__border[0]):
+                    return (False, 0, 0)
+
+                if gradient(image[r-scan_offset[0],c], image[r,c]) > self.__threshhold:
+                    cross_encounter = True
+                    if not edge_trigger:
+                        edge_trigger = True
+                        up_down[0] = r
+
+                        # (DEBUG) Color rising edge blue
+                        try:
+                            self.__rgb[r,c] = [0,0,255]
+                        except:
+                            None
+
+                elif gradient(image[r-scan_offset[0],c], image[r,c]) < -self.__threshhold:
+                    cross_encounter = True
+                    if edge_trigger:
+                        up_down[1] = r
+
+                        # (DEBUG) Color falling edge green
+                        try:
+                            self.__rgb[r,c] = [0,255,0]
+                        except:
+                            None
+
+                        continue
+
+                if image[r,c] < min_col_intensity:
+                    min_col_intensity = image[r,c]
+
+            if not cross_encounter and abs(min_col_intensity - min_intensity) > self.__threshhold:
+                right = c
+                hbar_bounds[2] = up_down[0]
+                hbar_bounds[3] = up_down[1]
+                break
+
+        # If all bounds were not satisfied
+        if not left or not right or not all(hbar_bounds):
+            return (False, 0, 0)
+
+        # If the right and left sides were not close to the same width
+        if abs((hbar_bounds[1] - hbar_bounds[0]) - (hbar_bounds[3] - hbar_bounds[2])) > self.__target_offset:
+            return (False, 0, 0)
+
+        # Find true center column
+        center_column = (right + left) // 2
+
+        # Extract the vector cooresponding to the upwards vertical arm of the cross with
+        # the origin at the center
+        up_vec = np.array([(vbar_bounds[1] + vbar_bounds[0]) / 2 - center_column,  center_row - top])
+        if np.all((up_vec == 0)):
+            return (False, 0, 0)
+        up_unit = up_vec / np.linalg.norm(up_vec)
+
+        # Extract downward vertical vector
+        down_vec = np.array([(vbar_bounds[3] + vbar_bounds[2]) / 2 - center_column, center_row - bottom])
+        if np.all((down_vec == 0)):
+            return (False, 0, 0)
+        down_unit = down_vec / np.linalg.norm(down_vec)
+
+        # Extract right horizontal vector
+        right_vec = np.array([right - center_column, center_row - (hbar_bounds[3] + hbar_bounds[2]) / 2])
+        if np.all((right_vec == 0)):
+            return (False, 0, 0)
+        right_unit = right_vec / np.linalg.norm(right_vec)
+
+        # Extract left horizontal vector
+        left_vec = np.array([left - center_column, center_row - (hbar_bounds[1] + hbar_bounds[0]) / 2])
+        if np.all((left_vec == 0)):
+            return (False, 0, 0)
+        left_unit = left_vec / np.linalg.norm(left_vec)
+
+        # (DEBUG)
+        # print(up_vec)
+        # print(down_vec)
+        # print(right_vec)
+        # print(left_vec)
+
+        # Check that vectors are about the same length
+        if abs(np.linalg.norm(up_vec) - np.linalg.norm(right_vec)) > self.__target_offset:
+            return (False, 0, 0)
+
+        # Check that vectors are not tiny
+        if np.linalg.norm(down_vec) < self.__target_offset or np.linalg.norm(left_vec) < self.__target_offset:
+            return (False, 0, 0)
+
+        # Classify as not a cross if the angle is greater than 17 degrees
+        if abs(np.arccos(np.dot(up_unit, right_unit)) - (np.pi/2)) > 0.3:
+            return (False, 0, 0)
+
+        if abs(np.arccos(np.dot(right_unit, down_unit)) - (np.pi/2)) > 0.3:
+            return (False, 0, 0)
+
+        if abs(np.arccos(np.dot(down_unit, left_unit)) - (np.pi/2)) > 0.3:
+            return (False, 0, 0)
+
+        if abs(np.arccos(np.dot(left_unit, up_unit)) - (np.pi/2)) > 0.3:
+            return (False, 0, 0)
+
+        # (DEBUG)
+        print(center_row, center_column)
+
+        # (DEBUG) Draw lines on the bounds
+        try:
+            self.__rgb[top,vbar_bounds[0]:vbar_bounds[1]] = [255,0,0]
+            self.__rgb[bottom,vbar_bounds[2]:vbar_bounds[3]] = [255,0,0]
+            self.__rgb[hbar_bounds[0]:hbar_bounds[1], left] = [255,0,0]
+            self.__rgb[hbar_bounds[2]:hbar_bounds[3], right] = [255,0,0]
+        except:
+            None
+
+        # (DEBUG) Draw dot on the center
+        try:
+            self.__rgb[center_row-column_radius:center_row+column_radius, center_column-column_radius:center_column+column_radius] = [255,0,0]
+        except:
+            None
+
+        return (True, center_row, center_column)
 
     def attach_rgb(self, rgb):
         # Link the RGB to the class object so we can draw on it.
         self.__rgb = rgb
 
 
-tracker = Tracker((2,2), (10,10), 2, 35)
+tracker = Tracker((2,2), (10,10), 5, 35)
 
 im = np.array(imageio.imread("tracking_dark.jpg"))
 
 # Downsample the image to the (approximate) MBot resolution
 im = im[::5,::5]
 
-im = im[100:300,100:300]
+# im = im[100:300,100:300]
 # im = im[600:1000,800:1500]
-
+# im = im[:,:2400]
+# im = im[700:900, 1600:1800]
 
 gray = im.mean(2)
 
@@ -229,4 +409,4 @@ plt.figure()
 plt.title('Tracker output')
 plt.axis('off')
 plt.imshow(im)
-plt.imsave("points_of_interest.jpg", im)
+plt.imsave("output.jpg", im)
