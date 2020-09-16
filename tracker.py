@@ -64,7 +64,7 @@ class Tracker:
 
                     # If the localized search finds a target, stop the global search
                     if self.pinpoint_target(image, r, c):
-                        return
+                        return #return
 
     def update_targets(self, image):
         # For task 3
