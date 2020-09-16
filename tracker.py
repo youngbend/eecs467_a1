@@ -188,11 +188,52 @@ class Tracker:
         left = None
         right = None
 
-        center = (top + bottom) / 2
+        center = (top + bottom) // 2
 
-        # 1. find horizontal bar - start from center -> move left within radius
-        # 2. if no bar found within the radius, immediately return False
+        # hbar_bounds[UpperLeft, BottomLeft, UpperRight, BottomRight]
+        hbar_bounds[None, None, None, None]
 
+        # For all the rows that are a little bit above and a little bit below the center point
+        # Go through the columns to see where the left and right bound may be
+        for r in range(center - self.__target_offset, center + self.__target_offset, self.__scan_offset[0]):
+
+            left_edge_trigger = False
+            for c in range(0, vbar_bounds[0], self.__scan_offset[1]):
+
+                # If we detect a large change in the gradient from one column to the next
+                if gradient(image[r,c-scan_offset[1]], image[r,c]) > self.__threshhold:
+                    if not left_edge_trigger:
+                        left_edge_trigger = True
+                        hbar_bounds[0] = r
+
+                        # if left has not been determined yet, set this column to be left
+                        if not left:
+                            left = c
+                else:
+                    
+                
+
+            # if it could not find a left edge, stop the search b/c this is not a valid target  
+            if not left_edge_trigger:
+                return False
+            
+            right_edge_trigger = False
+            for c in range(vbar_bounds[1], image.shape[1], self.__scan_offset[1]):
+                if gradient(image[r,c-scan_offset[1]], image[r,c]) > self.__threshhold:
+                    if not right_edge_trigger:
+                        right_edge_trigger = True
+                        hbar_bounds[2] = r
+
+                        # if right hasn't been determined yet, set this column to be right
+                        if not right: 
+                            right = c
+
+            
+                    
+
+        # set the center values to where the center of the bar should be
+        self.__center_x = numpy.average(vbar_bounds)
+        self.__center_y = numpy.average(hbar_bounds) 
         return True
 
     def attach_rgb(self, rgb):
