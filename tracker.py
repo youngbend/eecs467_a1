@@ -16,8 +16,10 @@ class Target:
     def get_center(self):
         return (self.__center_x, self.__center_y)
 
-    def update(self, image):
+    def update(self, new_center_x, new_center_y):
         # Track target with image
+        self.__center_x = new_center_x
+        self.__center_y = new_center_y
         return (self.__center_x, self.__center_y)
 
 class Tracker:
@@ -63,8 +65,16 @@ class Tracker:
                     #     None
 
                     # If the localized search finds a target, stop the global search
-                    if self.pinpoint_target(image, r, c):
-                        return #return
+                    # Qingyi: assumes that the pinpoint_traget returns the tuple:
+                    # (Boolean:whether there is a cross, center.x, center.y)
+                    is_cross, cross_x, cross_y = self.pinpoint_target(image, r, c)
+                    if is_cross: 
+                        self.__targets.append(Target(cross_x, cross_y))
+                    # Qingyi: We would need to avoid adding a target twice though - 
+                    # this can be done by checking r and c is not in the range of 
+                    # existing cross region
+        return 
+        
 
     def update_targets(self, image):
         # For task 3
