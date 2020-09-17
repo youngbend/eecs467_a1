@@ -1,7 +1,7 @@
 import numpy as np, matplotlib as mpl, matplotlib.pyplot as plt
 import math
 import imageio
-import scipy.ndimage
+import cv2
 
 def gradient(A, B):
     # Calculate an approximate gradient between two pixels values
@@ -80,6 +80,16 @@ class Tracker:
         # finer features
         scan_offset = [math.ceil(self.__scan_offset[0] / 2), math.ceil(self.__scan_offset[1] / 2)]
 
+        # Determine the initial scan width
+        initial_right = None
+        for c in range(col, image.shape[1], scan_offset[1]):
+            if gradient(image[row,c-scan_offset[1]], image[row,c]) < -self.__threshhold:
+                initial_right = c
+                break
+
+        if not initial_right:
+            return (False, 0, 0)
+
         # Column numbers of the vertical bar top and bottom in the order:
         # [top_left, top_right, bottom_left, bottom_right]
         vbar_bounds = [None, None, None, None]
@@ -95,7 +105,7 @@ class Tracker:
         # Bar width of previous row which is updated to track the bar, even when angled.
         # Search starts at the column of the detected feature with offset on
         # both sides.
-        left_right = [col - self.__target_offset, col + self.__target_offset]
+        left_right = [col - self.__target_offset, initial_right]
 
         # Iterate through the rows until the bottom of the image.
         for r in range(row - self.__target_offset, image.shape[0], scan_offset[0]):
@@ -214,10 +224,10 @@ class Tracker:
                         up_down[0] = r
 
                         # (DEBUG) Color rising edge blue
-                        try:
-                            self.__rgb[r,c] = [0,0,255]
-                        except:
-                            None
+                        # try:
+                        #     self.__rgb[r,c] = [0,0,255]
+                        # except:
+                        #     None
 
                 elif gradient(image[r-scan_offset[0],c], image[r,c]) < -self.__threshhold:
                     cross_encounter = True
@@ -225,10 +235,10 @@ class Tracker:
                         up_down[1] = r
 
                         # (DEBUG) Color falling edge green
-                        try:
-                            self.__rgb[r,c] = [0,255,0]
-                        except:
-                            None
+                        # try:
+                        #     self.__rgb[r,c] = [0,255,0]
+                        # except:
+                        #     None
 
                         continue
 
@@ -264,10 +274,10 @@ class Tracker:
                         up_down[0] = r
 
                         # (DEBUG) Color rising edge blue
-                        try:
-                            self.__rgb[r,c] = [0,0,255]
-                        except:
-                            None
+                        # try:
+                        #     self.__rgb[r,c] = [0,0,255]
+                        # except:
+                        #     None
 
                 elif gradient(image[r-scan_offset[0],c], image[r,c]) < -self.__threshhold:
                     cross_encounter = True
@@ -275,10 +285,10 @@ class Tracker:
                         up_down[1] = r
 
                         # (DEBUG) Color falling edge green
-                        try:
-                            self.__rgb[r,c] = [0,255,0]
-                        except:
-                            None
+                        # try:
+                        #     self.__rgb[r,c] = [0,255,0]
+                        # except:
+                        #     None
 
                         continue
 
@@ -328,10 +338,10 @@ class Tracker:
         left_unit = left_vec / np.linalg.norm(left_vec)
 
         # (DEBUG)
-        # print(up_vec)
-        # print(down_vec)
-        # print(right_vec)
-        # print(left_vec)
+        print(up_vec)
+        print(down_vec)
+        print(right_vec)
+        print(left_vec)
 
         # Check that vectors are about the same length
         if abs(np.linalg.norm(up_vec) - np.linalg.norm(right_vec)) > self.__target_offset:
@@ -341,21 +351,21 @@ class Tracker:
         if np.linalg.norm(down_vec) < self.__target_offset or np.linalg.norm(left_vec) < self.__target_offset:
             return (False, 0, 0)
 
-        # Classify as not a cross if the angle is greater than 17 degrees
-        if abs(np.arccos(np.dot(up_unit, right_unit)) - (np.pi/2)) > 0.3:
+        # Classify as not a cross if the angle is greater than about 15 degrees
+        if abs(np.arccos(np.dot(up_unit, right_unit)) - (np.pi/2)) > 0.25:
             return (False, 0, 0)
 
-        if abs(np.arccos(np.dot(right_unit, down_unit)) - (np.pi/2)) > 0.3:
+        if abs(np.arccos(np.dot(up_unit, left_unit)) - (np.pi/2)) > 0.25:
             return (False, 0, 0)
 
-        if abs(np.arccos(np.dot(down_unit, left_unit)) - (np.pi/2)) > 0.3:
+        if abs(np.arccos(np.dot(left_unit, down_unit)) - (np.pi/2)) > 0.25:
             return (False, 0, 0)
 
-        if abs(np.arccos(np.dot(left_unit, up_unit)) - (np.pi/2)) > 0.3:
+        if abs(np.arccos(np.dot(right_unit, down_unit)) - (np.pi/2)) > 0.25:
             return (False, 0, 0)
 
         # (DEBUG)
-        print(center_row, center_column)
+        # print(center_row, center_column)
 
         # (DEBUG) Draw lines on the bounds
         try:
@@ -366,11 +376,11 @@ class Tracker:
         except:
             None
 
-        # (DEBUG) Draw dot on the center
-        try:
-            self.__rgb[center_row-column_radius:center_row+column_radius, center_column-column_radius:center_column+column_radius] = [255,0,0]
-        except:
-            None
+        # (DEBUG) Draw square on the center
+        # try:
+        #     self.__rgb[center_row-column_radius:center_row+column_radius, center_column-column_radius:center_column+column_radius] = [255,0,0]
+        # except:
+        #     None
 
         return (True, center_row, center_column)
 
@@ -379,7 +389,7 @@ class Tracker:
         self.__rgb = rgb
 
 
-tracker = Tracker((2,2), (10,10), 5, 35)
+tracker = Tracker((2,2), (10,10), 5, 45)
 
 im = np.array(imageio.imread("tracking_dark.jpg"))
 
@@ -393,9 +403,6 @@ im = im[::5,::5]
 
 gray = im.mean(2)
 
-# Probably not necessary, but use a sharpening filter to alias the cross
-# gray = gray - scipy.ndimage.gaussian_filter(gray, 50)
-
 plt.figure()
 plt.title('Image')
 plt.axis('off')
@@ -404,6 +411,11 @@ plt.imsave("grayscale.jpg", gray, cmap='gray')
 
 tracker.attach_rgb(im)
 tracker.scan(gray)
+
+centers = tracker.get_target_centers()
+
+for center in centers:
+    im = cv2.circle(im.astype(np.uint8), (center[1], center[0]), 3, (255,0,0), -1)
 
 plt.figure()
 plt.title('Tracker output')
