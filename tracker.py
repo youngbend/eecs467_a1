@@ -36,7 +36,7 @@ class Target:
         if is_found:
             self.__center_x = x
             self.__center_y = y
-            self.__radius = r + 5 
+            self.__radius = r + 5
             self.__history.append((x,y))
             print("Updated Successful!")
         else:
@@ -416,23 +416,6 @@ class Tracker:
 
 tracker = Tracker((2,2), (10,10), 5, 35)
 
-
-
-for i in range(0,3):
-    im = cv2.imread("image"+ str(i) + ".jpg")
-    im = cv2.cvtColor(im, cv2.COLOR_RGB2GRAY)
-    tracker.scan(im)
-    im = cv2.cvtColor(im, cv2.COLOR_GRAY2RGB)
-    for target_center in tracker.get_target_centers():
-        # TODO: only draw the target that is active
-        im = cv2.circle(im, (target_center[1], target_center[0]), 2, (0, 0, 255),5)
-    
-    cv2.imshow("Tracked Image" + str(i), im)
-    cv2.waitKey(0)
-
-cv2.destroyAllWindows()
-
-'''
 im = np.array(imageio.imread("cross_image.jpg"))
 
 # Downsample the image to the (approximate) MBot resolution
@@ -462,4 +445,3 @@ plt.title('Tracker output')
 plt.axis('off')
 plt.imshow(im)
 plt.imsave("output.jpg", im)
-'''
