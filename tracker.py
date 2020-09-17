@@ -368,8 +368,10 @@ class Tracker:
             return (False, 0, 0, 0)
 
         # Check that vectors are not tiny
-        if np.linalg.norm(down_vec) < self.__target_offset or np.linalg.norm(left_vec) < self.__target_offset:
-            return (False, 0, 0, 0)
+        # TODO
+        #if np.linalg.norm(down_vec) < self.__target_offset or np.linalg.norm(left_vec) < self.__target_offset:
+        #    return (False, 0, 0, 0)
+
 
         # Classify as not a cross if the angle is greater than 17 degrees
         if abs(np.arccos(np.dot(up_unit, right_unit)) - (np.pi/2)) > 0.3:
