@@ -8,56 +8,34 @@ def gradient(A, B):
     return int(A) - int(B)
 
 class Target:
-    def __init__(self, x, y, radius):
+    def __init__(self, row, column, radius):
         # Initialize tracker instance at center location (x,y)
-        self.__is_active = True
-        self.__center_x = x
-        self.__center_y = y
-        self.__radius = radius
-        self.__history = [(x,y)]
-        # Qingyi: add a radius of the target, to avoid looking at that region agin
-        # when looking for new targets; add history
+        self.is_active = True
+        self.center_row = row
+        self.center_col = column
+        self.radius = radius
+        self.prev_location = None
 
-    def is_active(self):
-        return self.__is_active
+    def update(self, row, column, radius):
+        self.prev_location = (self.center_row, self.center_col, self.radius)
+        self.is_active = True
+        self.center_row = row
+        self.center_col = column
+        self.radius = radius
 
     def get_center(self):
-        return (self.__center_x, self.__center_y)
-
-    def get_radius(self):
-        return self.__radius
-
-    def update(self, image):
-        # Track target with image
-        print("Running update on current Trackers...")
-        print("For the tracker at ",self.__center_x, self.__center_y, "with radius", self.__radius, "...")
-        is_found, x, y, r = Tracker((2,2),(10,10),self.__radius + 15,35).pinpoint_target(image, self.__center_x, self.__center_y)
-        if is_found:
-            self.__center_x = x
-            self.__center_y = y
-            self.__radius = r + 5
-            self.__history.append((x,y))
-            print("Updated Successful!")
-        else:
-            self.__is_active = False
-            print("Not Found any more.")
-        return (self.__center_x, self.__center_y)
+        return (self.center_row, self.center_col)
 
 class Tracker:
-    def __init__(self, scan_offset, scan_border, target_offset, threshhold):
+    def __init__(self, scan_offset, target_offset, threshhold, tracking_offset):
         # Initialize tracker with scanning offset (row_offset, col_offset),
-        # scanning border (row_border, col_border), target bound offset,
-        # and gradient threshhold
+        # target bound offset, and gradient threshhold
 
         self.__targets = []
 
         # (row_offset, col_offset) responsible for determining the distance
         # between samples within the global search.
         self.__scan_offset = scan_offset
-
-        # (row_border, col_border) giving a margin around the image that is not
-        # searched (due to distortion of the fisheye lens)
-        self.__border = scan_border
 
         # offset around localized feature search that determines how far outside
         # the bounds of the previous layer we should search
@@ -66,32 +44,31 @@ class Tracker:
         # Threshhold for what we consider to be a significant gradient
         self.__threshhold = threshhold
 
+        # Base offset for determining spread of updated tracker search
+        self.__tracking_offset = tracking_offset
+
     def get_target_centers(self):
         # Return the center of all tracked targets
         return [t.get_center() for t in self.__targets]
 
-    def scan(self, image):
+    def scan(self, image, border=(10,10,10,10)):
         # Scan image for target. Scans horizontally from top to bottom
+        # Border is the amount of pixels around the edges that is not scanned
+        # border = (top_margin, bottom_margin, left_margin, right_margin)
+
         self.update_targets(image)
 
-        for r in range(self.__border[0], image.shape[0] - self.__border[0], self.__scan_offset[0]):
-            for c in range(self.__border[1], image.shape[1] - self.__border[1], self.__scan_offset[1]):
-                for t in self.__targets:
-                    #Qingyi: skip the region that has already had a target
-                    x, y = t.get_center()
-                    radius = t.get_radius()
-                    if x - radius < r < x + radius and y - radius < r < y + radius:
-                        continue
+        for r in range(border[0], image.shape[0] - border[1], self.__scan_offset[0]):
+            for c in range(border[2], image.shape[1] - border[3], self.__scan_offset[1]):
 
                 # If we find a significant rising gradient (left side of the cross),
                 # start a localized search to distinguish features from false positives
                 if gradient(image[r,c-self.__scan_offset[1]], image[r,c]) > self.__threshhold:
 
-                    # (DEBUG) Turn the significant pixel red in the image
-                    # try:
-                    #     self.__rgb[r,c] = [255,0,0]
-                    # except:
-                    #     None
+                    for t in self.__targets:
+                        # Skip the region that has already had a target
+                        if t.center_row - t.radius < r < t.center_row + t.radius and t.center_col - t.radius < c < t.center_col + t.radius:
+                            continue
 
                     # If the localized search finds a target, stop the global search
                     is_target, center_row, center_column, radius = self.pinpoint_target(image, r, c)
@@ -100,9 +77,80 @@ class Tracker:
                         return
 
     def update_targets(self, image):
-        # For task 3
-        for t in self.__targets:
-            t.update(image)
+        # Update all targets without scanning the whole image
+        i = 0
+        while i < len(self.__targets):
+            row_offset = 0
+            col_offset = 0
+            depth_offset = 0
+            tracking_offset = self.__tracking_offset
+            if self.__targets[i].prev_location:
+                row_offset = self.__targets[i].center_row - self.__targets[i].prev_location[0]
+                col_offset = self.__targets[i].center_col - self.__targets[i].prev_location[1]
+                depth_offset = self.__targets[i].radius - self.__targets[i].prev_location[2]
+                depth_offset *= depth_offset > 0
+                if not self.__targets[i].is_active:
+                    row_offset *= 1.5
+                    col_offset *= 1.5
+                    depth_offset *= 1.5
+                else:
+                    tracking_offset //= 2
+            elif not self.__targets[i].is_active:
+                tracking_offset *= 2
+
+            top = int(self.__targets[i].center_row - self.__targets[i].radius + row_offset - depth_offset - tracking_offset)
+            bottom = int(self.__targets[i].center_row + self.__targets[i].radius + row_offset + depth_offset + tracking_offset)
+            left = int(self.__targets[i].center_col - self.__targets[i].radius + col_offset - depth_offset - tracking_offset)
+            right = int(self.__targets[i].center_col + self.__targets[i].radius + col_offset + depth_offset + tracking_offset)
+
+            if top < 0 or left < 0 or bottom > image.shape[0] or right > image.shape[1]:
+                self.__targets.pop(i)
+                continue
+
+            # (DEBUG)
+            try:
+                self.__rgb[top,left:right] = [0,255,0]
+                self.__rgb[bottom,left:right] = [0,255,0]
+                self.__rgb[top:bottom,left] = [0,255,0]
+                self.__rgb[top:bottom,right] = [0,255,0]
+            except:
+                None
+
+            complete = False
+            is_found = False
+            center_row = 0
+            center_col = 0
+            radius = 0
+
+            for r in range(top, bottom, self.__scan_offset[0]):
+                for c in range(left + self.__scan_offset[1], right, self.__scan_offset[1]):
+                    self.__rgb[r,c] = [0,0,255]
+
+                    # If we find a significant rising gradient (left side of the cross),
+                    # start a localized search to distinguish features from false positives
+                    if gradient(image[r,c-self.__scan_offset[1]], image[r,c]) > self.__threshhold:
+
+                        # If the localized search finds a target, stop the global search
+                        is_found, center_row, center_column, radius = self.pinpoint_target(image, r, c)
+                        if is_found:
+                            complete = True
+                            break
+
+                if complete:
+                    break
+
+            if is_found:
+                self.__targets[i].update(center_row, center_column, radius)
+                print("Radius = {}".format(radius))
+
+            else:
+                if self.__targets[i].is_active:
+                    self.__targets[i].is_active = False
+                else:
+                    self.__targets.pop(i)
+                    continue
+
+            i += 1
 
     def pinpoint_target(self, image, row, col):
         # Pinpoint the target center given the triggering index
@@ -119,7 +167,7 @@ class Tracker:
                 break
 
         if not initial_right:
-            return (False, 0, 0)
+            return (False, 0, 0, 0)
 
         # Column numbers of the vertical bar top and bottom in the order:
         # [top_left, top_right, bottom_left, bottom_right]
@@ -142,7 +190,7 @@ class Tracker:
         for r in range(row - self.__target_offset, image.shape[0], scan_offset[0]):
 
             # If our search goes outside of the boundaries, return.
-            if r < self.__border[0] or r > (image.shape[0] - self.__border[0]):
+            if r < 0 or r >= image.shape[0]:
                 return (False, 0, 0, 0)
 
             # Per row, keep track of whether the left edge was triggered
@@ -161,7 +209,7 @@ class Tracker:
             for c in range(left_right[0] - self.__target_offset, left_right[1] + self.__target_offset, scan_offset[1]):
 
                 # If the horizontal bar goes outside the boundaries, return
-                if c < self.__border[1] or c > (image.shape[1] - self.__border[1]):
+                if c < 0 or c >= image.shape[1]:
                     return (False, 0, 0, 0)
 
                 # Encounter left edge on first rising gradient
@@ -236,7 +284,7 @@ class Tracker:
         up_down = [center_row - column_radius, center_row + column_radius]
         for c in range(center_column, 0, -scan_offset[1]):
 
-            if c < self.__border[1]:
+            if c < 0:
                 return (False, 0, 0, 0)
 
             edge_trigger = False
@@ -245,7 +293,7 @@ class Tracker:
 
             for r in range(up_down[0] - self.__target_offset, up_down[1] + self.__target_offset, scan_offset[0]):
 
-                if r < self.__border[0] or r > (image.shape[0] - self.__border[0]):
+                if r < 0 or r >= image.shape[0]:
                     return (False, 0, 0, 0)
 
                 if gradient(image[r-scan_offset[0],c], image[r,c]) > self.__threshhold:
@@ -255,10 +303,10 @@ class Tracker:
                         up_down[0] = r
 
                         # (DEBUG) Color rising edge blue
-                        # try:
-                        #     self.__rgb[r,c] = [0,0,255]
-                        # except:
-                        #     None
+                        try:
+                            self.__rgb[r,c] = [0,0,255]
+                        except:
+                            None
 
                 elif gradient(image[r-scan_offset[0],c], image[r,c]) < -self.__threshhold:
                     cross_encounter = True
@@ -266,10 +314,10 @@ class Tracker:
                         up_down[1] = r
 
                         # (DEBUG) Color falling edge green
-                        # try:
-                        #     self.__rgb[r,c] = [0,255,0]
-                        # except:
-                        #     None
+                        try:
+                            self.__rgb[r,c] = [0,255,0]
+                        except:
+                            None
 
                         continue
 
@@ -286,7 +334,7 @@ class Tracker:
         up_down = [center_row - column_radius, center_row + column_radius]
         for c in range(center_column, image.shape[1], scan_offset[1]):
 
-            if c > (image.shape[1] - self.__border[1]):
+            if c >= image.shape[1]:
                 return (False, 0, 0, 0)
 
             edge_trigger = False
@@ -295,7 +343,7 @@ class Tracker:
 
             for r in range(up_down[0] - self.__target_offset, up_down[1] + self.__target_offset, scan_offset[0]):
 
-                if r < self.__border[0] or r > (image.shape[0] - self.__border[0]):
+                if r < 0 or r >= image.shape[0]:
                     return (False, 0, 0, 0)
 
                 if gradient(image[r-scan_offset[0],c], image[r,c]) > self.__threshhold:
@@ -305,10 +353,10 @@ class Tracker:
                         up_down[0] = r
 
                         # (DEBUG) Color rising edge blue
-                        # try:
-                        #     self.__rgb[r,c] = [0,0,255]
-                        # except:
-                        #     None
+                        try:
+                            self.__rgb[r,c] = [0,0,255]
+                        except:
+                            None
 
                 elif gradient(image[r-scan_offset[0],c], image[r,c]) < -self.__threshhold:
                     cross_encounter = True
@@ -316,10 +364,10 @@ class Tracker:
                         up_down[1] = r
 
                         # (DEBUG) Color falling edge green
-                        # try:
-                        #     self.__rgb[r,c] = [0,255,0]
-                        # except:
-                        #     None
+                        try:
+                            self.__rgb[r,c] = [0,255,0]
+                        except:
+                            None
 
                         continue
 
@@ -395,23 +443,14 @@ class Tracker:
         if abs(np.arccos(np.dot(right_unit, down_unit)) - (np.pi/2)) > 0.25:
             return (False, 0, 0, 0)
 
-        # (DEBUG)
-        # print(center_row, center_column)
-
         # (DEBUG) Draw lines on the bounds
-        # try:
-        #     self.__rgb[top,vbar_bounds[0]:vbar_bounds[1]] = [255,0,0]
-        #     self.__rgb[bottom,vbar_bounds[2]:vbar_bounds[3]] = [255,0,0]
-        #     self.__rgb[hbar_bounds[0]:hbar_bounds[1], left] = [255,0,0]
-        #     self.__rgb[hbar_bounds[2]:hbar_bounds[3], right] = [255,0,0]
-        # except:
-        #     None
-
-        # (DEBUG) Draw square on the center
-        # try:
-        #     self.__rgb[center_row-column_radius:center_row+column_radius, center_column-column_radius:center_column+column_radius] = [255,0,0]
-        # except:
-        #     None
+        try:
+            self.__rgb[top,vbar_bounds[0]:vbar_bounds[1]] = [255,0,0]
+            self.__rgb[bottom,vbar_bounds[2]:vbar_bounds[3]] = [255,0,0]
+            self.__rgb[hbar_bounds[0]:hbar_bounds[1], left] = [255,0,0]
+            self.__rgb[hbar_bounds[2]:hbar_bounds[3], right] = [255,0,0]
+        except:
+            None
 
         return (True, center_row, center_column, max(bottom-top, right-left) // 2)
 
@@ -419,10 +458,14 @@ class Tracker:
         # Link the RGB to the class object so we can draw on it.
         self.__rgb = rgb
 
+    def create_target(self, target):
+        # For testing of the update_targets function
+        self.__targets.append(target)
 
-tracker = Tracker((2,2), (10,10), 5, 35)
 
-im = np.array(imageio.imread("cross_image.jpg"))
+tracker = Tracker((2,2), 3, 25, 15)
+
+im = np.array(imageio.imread("tracking.jpg"))
 
 # Downsample the image to the (approximate) MBot resolution
 im = im[::5,::5]
@@ -443,7 +486,16 @@ plt.imsave("grayscale.jpg", gray, cmap='gray')
 tracker.attach_rgb(im)
 tracker.scan(gray)
 
+# t = Target(144, 236, 9)
+# t.prev_location = (134, 236, 9)
+# tracker.create_target(t)
+#
+# tracker.update_targets(gray)
+# tracker.update_targets(gray)
+
+
 centers = tracker.get_target_centers()
+print(centers)
 
 for center in centers:
     im = cv2.circle(im.astype(np.uint8), (center[1], center[0]), 3, (255,0,0), -1)
