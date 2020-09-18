@@ -16,6 +16,7 @@ class Target:
         self.radius = radius
         self.prev_location = None
 
+
     def update(self, row, column, radius):
         self.prev_location = (self.center_row, self.center_col, self.radius)
         self.is_active = True
@@ -23,8 +24,10 @@ class Target:
         self.center_col = column
         self.radius = radius
 
+
     def get_center(self):
         return (self.center_row, self.center_col)
+
 
 class Tracker:
     def __init__(self, scan_offset, target_offset, threshhold, tracking_offset):
@@ -47,9 +50,11 @@ class Tracker:
         # Base offset for determining spread of updated tracker search
         self.__tracking_offset = tracking_offset
 
+
     def get_target_centers(self):
         # Return the center of all tracked targets
         return [t.get_center() for t in self.__targets]
+
 
     def scan(self, image, border=(10,10,10,10)):
         # Scan image for target. Scans horizontally from top to bottom
@@ -64,17 +69,21 @@ class Tracker:
                 # If we find a significant rising gradient (left side of the cross),
                 # start a localized search to distinguish features from false positives
                 if gradient(image[r,c-self.__scan_offset[1]], image[r,c]) > self.__threshhold:
-
+                    inside_target = False
                     for t in self.__targets:
                         # Skip the region that has already had a target
-                        if t.center_row - t.radius < r < t.center_row + t.radius and t.center_col - t.radius < c < t.center_col + t.radius:
-                            continue
+                        if (t.center_row - t.radius) < r < (t.center_row + t.radius) or (t.center_col - t.radius) < c < (t.center_col + t.radius):
+                            inside_target = True
+                            break
+
+                    if inside_target:
+                        continue
 
                     # If the localized search finds a target, stop the global search
                     is_target, center_row, center_column, radius = self.pinpoint_target(image, r, c)
                     if is_target:
                         self.__targets.append(Target(center_row, center_column, radius))
-                        return
+
 
     def update_targets(self, image):
         # Update all targets without scanning the whole image
@@ -151,6 +160,7 @@ class Tracker:
                     continue
 
             i += 1
+
 
     def pinpoint_target(self, image, row, col):
         # Pinpoint the target center given the triggering index
@@ -463,12 +473,13 @@ class Tracker:
         self.__targets.append(target)
 
 
-tracker = Tracker((2,2), 3, 25, 15)
 
-im = np.array(imageio.imread("tracking.jpg"))
+tracker = Tracker((4,4), 5, 25, 25)
+
+im = np.array(imageio.imread("multi_target.jpg"))
 
 # Downsample the image to the (approximate) MBot resolution
-im = im[::5,::5]
+# im = im[::5,::5]
 
 # im = im[100:300,100:300]
 # im = im[600:1000,800:1500]
@@ -490,15 +501,17 @@ tracker.scan(gray)
 # t.prev_location = (134, 236, 9)
 # tracker.create_target(t)
 #
-# tracker.update_targets(gray)
-# tracker.update_targets(gray)
+tracker.update_targets(gray)
+tracker.update_targets(gray)
+tracker.update_targets(gray)
+tracker.update_targets(gray)
 
 
 centers = tracker.get_target_centers()
 print(centers)
 
 for center in centers:
-    im = cv2.circle(im.astype(np.uint8), (center[1], center[0]), 3, (255,0,0), -1)
+    im = cv2.circle(im.astype(np.uint8), (center[1], center[0]), 10, (255,0,0), -1)
 
 plt.figure()
 plt.title('Tracker output')
