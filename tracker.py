@@ -1,7 +1,5 @@
-import numpy as np, matplotlib as mpl, matplotlib.pyplot as plt
+import numpy as np
 import math
-import imageio
-import cv2
 
 def gradient(A, B):
     # Calculate an approximate gradient between two pixels values
@@ -133,7 +131,6 @@ class Tracker:
 
             for r in range(top, bottom, self.__scan_offset[0]):
                 for c in range(left + self.__scan_offset[1], right, self.__scan_offset[1]):
-                    self.__rgb[r,c] = [0,0,255]
 
                     # If we find a significant rising gradient (left side of the cross),
                     # start a localized search to distinguish features from false positives
@@ -150,7 +147,6 @@ class Tracker:
 
             if is_found:
                 self.__targets[i].update(center_row, center_column, radius)
-                print("Radius = {}".format(radius))
 
             else:
                 if self.__targets[i].is_active:
@@ -468,53 +464,3 @@ class Tracker:
         # Link the RGB to the class object so we can draw on it.
         self.__rgb = rgb
 
-    def create_target(self, target):
-        # For testing of the update_targets function
-        self.__targets.append(target)
-
-
-
-tracker = Tracker((4,4), 5, 25, 25)
-
-im = np.array(imageio.imread("multi_target.jpg"))
-
-# Downsample the image to the (approximate) MBot resolution
-# im = im[::5,::5]
-
-# im = im[100:300,100:300]
-# im = im[600:1000,800:1500]
-# im = im[:,:2400]
-# im = im[700:900, 1600:1800]
-
-gray = im.mean(2)
-
-plt.figure()
-plt.title('Image')
-plt.axis('off')
-plt.imshow(gray, cmap='gray')
-plt.imsave("grayscale.jpg", gray, cmap='gray')
-
-tracker.attach_rgb(im)
-tracker.scan(gray)
-
-# t = Target(144, 236, 9)
-# t.prev_location = (134, 236, 9)
-# tracker.create_target(t)
-#
-tracker.update_targets(gray)
-tracker.update_targets(gray)
-tracker.update_targets(gray)
-tracker.update_targets(gray)
-
-
-centers = tracker.get_target_centers()
-print(centers)
-
-for center in centers:
-    im = cv2.circle(im.astype(np.uint8), (center[1], center[0]), 10, (255,0,0), -1)
-
-plt.figure()
-plt.title('Tracker output')
-plt.axis('off')
-plt.imshow(im)
-plt.imsave("output.jpg", im)
