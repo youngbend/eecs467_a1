@@ -5,10 +5,11 @@ def gradient(A, B):
     # Calculate an approximate gradient between two pixels values
     return int(A) - int(B)
 
+
 class Target:
     def __init__(self, row, column, radius):
         # Initialize tracker instance at center location (x,y)
-        self.is_active = True
+        self.loss_count = 0
         self.center_row = row
         self.center_col = column
         self.radius = radius
@@ -17,10 +18,15 @@ class Target:
 
     def update(self, row, column, radius):
         self.prev_location = (self.center_row, self.center_col, self.radius)
-        self.is_active = True
+        self.loss_count = 0
         self.center_row = row
         self.center_col = column
         self.radius = radius
+
+
+    def lost(self):
+        # Increment loss counter
+        self.loss_count += 1
 
 
     def get_center(self):
@@ -28,7 +34,7 @@ class Target:
 
 
 class Tracker:
-    def __init__(self, scan_offset, target_offset, threshhold, tracking_offset):
+    def __init__(self, scan_offset, target_offset, threshhold, tracking_offset, tracking_timeout):
         # Initialize tracker with scanning offset (row_offset, col_offset),
         # target bound offset, and gradient threshhold
 
@@ -47,6 +53,9 @@ class Tracker:
 
         # Base offset for determining spread of updated tracker search
         self.__tracking_offset = tracking_offset
+
+        # Number of frames to look before removing tracked target
+        self.__tracking_timeout = tracking_timeout
 
 
     def get_target_centers(self):
@@ -96,13 +105,15 @@ class Tracker:
                 col_offset = self.__targets[i].center_col - self.__targets[i].prev_location[1]
                 depth_offset = self.__targets[i].radius - self.__targets[i].prev_location[2]
                 depth_offset *= depth_offset > 0
-                if not self.__targets[i].is_active:
-                    row_offset *= 1.5
-                    col_offset *= 1.5
-                    depth_offset *= 1.5
-                else:
-                    tracking_offset //= 2
-            elif not self.__targets[i].is_active:
+                if self.__targets[i].loss_count:
+                    # TODO
+                    interpolation_factor = 3 - 4 * np.exp(-self.__targets[i].loss_count / 2)
+                    row_offset *= interpolation_factor
+                    col_offset *= interpolation_factor
+                    depth_offset *= interpolation_factor
+                    tracking_offset *= interpolation_factor
+
+            elif self.__targets[i].loss_count:
                 tracking_offset *= 2
 
             top = int(self.__targets[i].center_row - self.__targets[i].radius + row_offset - depth_offset - tracking_offset)
@@ -149,9 +160,8 @@ class Tracker:
                 self.__targets[i].update(center_row, center_column, radius)
 
             else:
-                if self.__targets[i].is_active:
-                    self.__targets[i].is_active = False
-                else:
+                self.__targets[i].lost()
+                if self.__targets[i].loss_count > self.__tracking_timeout:
                     self.__targets.pop(i)
                     continue
 
@@ -166,6 +176,15 @@ class Tracker:
         scan_offset = [math.ceil(self.__scan_offset[0] / 2), math.ceil(self.__scan_offset[1] / 2)]
 
         # Determine the initial scan width
+        initial_left = None
+        for c in range(col, 0, -scan_offset[1]):
+            if gradient(image[row, c-scan_offset[1]], image[row,c]) > self.__threshhold:
+                initial_left = c
+                break
+
+        if not initial_left:
+            return (False, 0, 0, 0)
+
         initial_right = None
         for c in range(col, image.shape[1], scan_offset[1]):
             if gradient(image[row,c-scan_offset[1]], image[row,c]) < -self.__threshhold:
@@ -190,7 +209,8 @@ class Tracker:
         # Bar width of previous row which is updated to track the bar, even when angled.
         # Search starts at the column of the detected feature with offset on
         # both sides.
-        left_right = [col - self.__target_offset, initial_right]
+        left_right = [initial_left, initial_right]
+        gradient_counter = 0
 
         # Iterate through the rows until the bottom of the image.
         for r in range(row - self.__target_offset, image.shape[0], scan_offset[0]):
@@ -215,7 +235,7 @@ class Tracker:
             for c in range(left_right[0] - self.__target_offset, left_right[1] + self.__target_offset, scan_offset[1]):
 
                 # If the horizontal bar goes outside the boundaries, return
-                if c < 0 or c >= image.shape[1]:
+                if c < scan_offset[1] or c >= image.shape[1]:
                     return (False, 0, 0, 0)
 
                 # Encounter left edge on first rising gradient
@@ -260,6 +280,14 @@ class Tracker:
                     if min_row_intensity < min_intensity:
                         min_intensity = min_row_intensity
 
+            if cross_encounter:
+                gradient_counter = 0
+            else:
+                gradient_counter += 1
+
+            if gradient_counter > 1.5 * (initial_right - initial_left):
+                return (False, 0, 0, 0)
+
             # If a black pixel was not encountered in this row, mark the bottom
             if top and not ((min_row_intensity - min_intensity) < self.__threshhold) and not cross_encounter:
                 bottom = r - scan_offset[0]
@@ -276,19 +304,22 @@ class Tracker:
         if abs((vbar_bounds[1] - vbar_bounds[0]) - (vbar_bounds[3] - vbar_bounds[2])) > self.__target_offset:
             return (False, 0, 0, 0)
 
-        left = None
-        right = None
-
         center_row = (top + bottom) // 2
         center_column = int(np.mean(vbar_bounds))
         column_radius = (vbar_bounds[1] - vbar_bounds[0]) // 2
+
+        if (vbar_bounds[1] - vbar_bounds[0]) > 0.5 * (bottom - top):
+            return (False, 0, 0, 0)
+
+        left = None
+        right = None
 
         # [top_left, bottom_left, top_right, bottom_right]
         hbar_bounds = [None, None, None, None]
 
         # Perform a vertical scan from the center until we find the left edge
         up_down = [center_row - column_radius, center_row + column_radius]
-        for c in range(center_column, 0, -scan_offset[1]):
+        for c in range(center_column - column_radius, 0, -scan_offset[1]):
 
             if c < 0:
                 return (False, 0, 0, 0)
@@ -338,7 +369,7 @@ class Tracker:
 
         # Perform a vertical scan from the center until we find the right edge
         up_down = [center_row - column_radius, center_row + column_radius]
-        for c in range(center_column, image.shape[1], scan_offset[1]):
+        for c in range(center_column + column_radius, image.shape[1], scan_offset[1]):
 
             if c >= image.shape[1]:
                 return (False, 0, 0, 0)
@@ -394,6 +425,9 @@ class Tracker:
         if abs((hbar_bounds[1] - hbar_bounds[0]) - (hbar_bounds[3] - hbar_bounds[2])) > self.__target_offset:
             return (False, 0, 0, 0)
 
+        if (hbar_bounds[1] - hbar_bounds[0]) > 0.5 * (right - left):
+            return (False, 0, 0, 0)
+
         # Find true center column
         center_column = (right + left) // 2
 
@@ -422,32 +456,39 @@ class Tracker:
             return (False, 0, 0, 0)
         left_unit = left_vec / np.linalg.norm(left_vec)
 
-        # (DEBUG)
-        # print(up_vec)
-        # print(down_vec)
-        # print(right_vec)
-        # print(left_vec)
-
         # Check that vectors are about the same length
         if abs(np.linalg.norm(up_vec) - np.linalg.norm(right_vec)) > self.__target_offset:
             return (False, 0, 0, 0)
 
         # Check that vectors are not tiny
-        if np.linalg.norm(down_vec) < self.__target_offset or np.linalg.norm(left_vec) < self.__target_offset:
+        if np.linalg.norm(down_vec) < 2 * self.__target_offset or np.linalg.norm(left_vec) < 2 * self.__target_offset:
             return (False, 0, 0, 0)
 
-        # Classify as not a cross if the angle is greater than about 15 degrees
-        if abs(np.arccos(np.dot(up_unit, right_unit)) - (np.pi/2)) > 0.25:
+        # Classify as not a cross if the angle is off by more than 15 degrees
+        if abs(np.dot(up_unit, right_unit)) > 0.25:
             return (False, 0, 0, 0)
 
-        if abs(np.arccos(np.dot(up_unit, left_unit)) - (np.pi/2)) > 0.25:
+        if abs(np.dot(up_unit, left_unit)) > 0.25:
             return (False, 0, 0, 0)
 
-        if abs(np.arccos(np.dot(left_unit, down_unit)) - (np.pi/2)) > 0.25:
+        if abs(np.dot(left_unit, down_unit)) > 0.25:
             return (False, 0, 0, 0)
 
-        if abs(np.arccos(np.dot(right_unit, down_unit)) - (np.pi/2)) > 0.25:
+        if abs(np.dot(right_unit, down_unit)) > 0.25:
             return (False, 0, 0, 0)
+
+        # Classify as not a cross if the opposite ends are not approximately parallel
+        if abs(abs(np.dot(up_unit, down_unit)) - 1) > 0.1:
+            return (False, 0, 0, 0)
+
+        if abs(abs(np.dot(right_unit, left_unit)) - 1) > 0.1:
+            return (False, 0, 0, 0)
+
+        # (DEBUG)
+        # print(up_vec)
+        # print(down_vec)
+        # print(right_vec)
+        # print(left_vec)
 
         # (DEBUG) Draw lines on the bounds
         try:
@@ -463,4 +504,3 @@ class Tracker:
     def attach_rgb(self, rgb):
         # Link the RGB to the class object so we can draw on it.
         self.__rgb = rgb
-
