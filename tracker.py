@@ -79,7 +79,7 @@ class Tracker:
                     inside_target = False
                     for t in self.__targets:
                         # Skip the region that has already had a target
-                        if (t.center_row - t.radius) < r < (t.center_row + t.radius) or (t.center_col - t.radius) < c < (t.center_col + t.radius):
+                        if ((t.center_row - t.radius) < r < (t.center_row + t.radius)) and ((t.center_col - t.radius) < c < (t.center_col + t.radius)):
                             inside_target = True
                             break
 
@@ -463,6 +463,12 @@ class Tracker:
         if np.linalg.norm(down_vec) < 2 * self.__target_offset or np.linalg.norm(left_vec) < 2 * self.__target_offset:
             return (False, 0, 0, 0)
 
+        # (DEBUG)
+        # print(up_vec)
+        # print(down_vec)
+        # print(right_vec)
+        # print(left_vec)
+
         # Classify as not a cross if the angle is off by more than 15 degrees
         if abs(np.dot(up_unit, right_unit)) > 0.25:
             return (False, 0, 0, 0)
@@ -482,12 +488,6 @@ class Tracker:
 
         if abs(abs(np.dot(right_unit, left_unit)) - 1) > 0.1:
             return (False, 0, 0, 0)
-
-        # (DEBUG)
-        # print(up_vec)
-        # print(down_vec)
-        # print(right_vec)
-        # print(left_vec)
 
         # (DEBUG) Draw lines on the bounds
         # try:

@@ -8,10 +8,10 @@ import cv2
 import tracker
 
 
-tracker = tracker.Tracker((4,4), 8, 40, 20, 20)
-camera_resolution = [1280,820]
+tracker = tracker.Tracker((4,4), 5, 35, 15, 20)
+camera_resolution = [640,480]
 camera_framerate = 15
-scan_period = 100
+scan_period = 80
 update_period = 1
 dot_size = 7
 
@@ -31,7 +31,7 @@ for frame in camera.capture_continuous(rawCapture, format="rgb", use_video_port=
 
     gray = image.mean(2)
     if frame_counter % scan_period == 0:
-        tracker.scan(gray, (60,60,60,60))
+        tracker.scan(gray, (20,20,20,20))
     elif frame_counter % update_period == 0 and len(tracker.get_target_centers()) > 0:
         tracker.update_targets(gray)
 
