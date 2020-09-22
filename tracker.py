@@ -70,6 +70,12 @@ class Tracker:
 
         self.update_targets(image)
 
+        # Remove targets that were not found in the update before starting a full scan.
+        i = 0
+        while i < len(self.__targets):
+            if self.__targets[i].loss_count:
+                self.__targets.pop(i)
+
         for r in range(border[0], image.shape[0] - border[1], self.__scan_offset[0]):
             for c in range(border[2], image.shape[1] - border[3], self.__scan_offset[1]):
 
