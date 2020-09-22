@@ -2,21 +2,22 @@ import numpy as np
 from picamera import PiCamera
 from picamera.array import PiRGBArray
 import pygame
+import time
 import sys
 import cv2
 import tracker
 import lcm
-from lcmtypes import mbot_motor_pwm_t
+from lcmtypes.simple_motor_command_t import simple_motor_command_t
 
-tracker = tracker.Tracker((4,4), 5, 35, 15, 30)
+tracker = tracker.Tracker((4,4), 5, 35, 20, 15)
 camera_resolution = [640,480]
 camera_framerate = 15
-scan_period = 80
+scan_period = 50
 update_period = 1
 dot_size = 7
 
-FWD_PWM_CMD = 0.3
-TURN_PWM_CMD = 0.3
+FORWARD_VEL_CONST = 0.3
+ANGULAR_VEL_CONST = 0.15
 
 lc = lcm.LCM("udpm://239.255.76.67:7667?ttl=1")
 pygame.init()
@@ -35,9 +36,9 @@ for frame in camera.capture_continuous(rawCapture, format="rgb", use_video_port=
     gray = image.mean(2)
     if frame_counter % scan_period == 0:
         tracker.scan(gray, (20,20,20,20))
-        image = cv2.putText(image, 'Scan', (20,20), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,255,0))
+        image = cv2.putText(image, 'Scan', (20,30), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0,255,0))
     elif frame_counter % update_period == 0 and len(tracker.get_target_centers()) > 0:
-        image = cv2.putText(image, 'Track...', (20,20), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,255,0))
+        image = cv2.putText(image, 'Track...', (20,30), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0,0,255))
         tracker.update_targets(gray)
 
     for center in tracker.get_target_centers():
@@ -49,8 +50,10 @@ for frame in camera.capture_continuous(rawCapture, format="rgb", use_video_port=
     screen.blit(image, (0,0))
     pygame.display.update()
 
-    fwd = 0.0
-    turn = 0.0
+    command = simple_motor_command_t()
+    command.utime = int(time.time() * 1000000)
+    command.angular_velocity = 0
+    command.forward_velocity = 0
 
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
@@ -60,22 +63,19 @@ for frame in camera.capture_continuous(rawCapture, format="rgb", use_video_port=
 
     key_input = pygame.key.get_pressed()
     if key_input[pygame.K_LEFT]:
-        turn += 1.0
+        command.angular_velocity += ANGULAR_VEL_CONST
     if key_input[pygame.K_UP]:
-        fwd += 1.0
+        command.forward_velocity += FORWARD_VEL_CONST
     if key_input[pygame.K_RIGHT]:
-        turn -= 1.0
+        command.angular_velocity -= ANGULAR_VEL_CONST
     if key_input[pygame.K_DOWN]:
-        fwd -= 1.0
+        command.forward_velocity -= FORWARD_VEL_CONST
     if key_input[pygame.K_q]:
         pygame.quit()
         sys.exit()
         cv2.destroyAllWindows()
 
-    command = mbot_motor_pwm_t()
-    command.left_motor_pwm =  fwd * FWD_PWM_CMD - turn * TURN_PWM_CMD
-    command.right_motor_pwm = fwd * FWD_PWM_CMD + turn * TURN_PWM_CMD
-    lc.publish("MBOT_MOTOR_PWM",command.encode())
+    lc.publish("MBOT_MOTOR_COMMAND_SIMPLE", command.encode())
 
     rawCapture.truncate(0)
     frame_counter += 1
