@@ -14,7 +14,7 @@ camera_resolution = [640,480]
 camera_framerate = 15
 scan_period = 50
 update_period = 1
-dot_size = 7
+dot_size = 4
 
 FORWARD_VEL_CONST = 0.3
 ANGULAR_VEL_CONST = 0.15

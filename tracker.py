@@ -75,6 +75,7 @@ class Tracker:
         while i < len(self.__targets):
             if self.__targets[i].loss_count:
                 self.__targets.pop(i)
+            i += 1
 
         for r in range(border[0], image.shape[0] - border[1], self.__scan_offset[0]):
             for c in range(border[2], image.shape[1] - border[3], self.__scan_offset[1]):
@@ -217,9 +218,6 @@ class Tracker:
         left_right = [initial_left, initial_right]
         gradient_counter = 0
 
-        sum_bar_widths = initial_right - initial_left
-        num_row_steps = 1
-
         # Iterate through the rows until the bottom of the image.
         for r in range(row - self.__target_offset, image.shape[0], scan_offset[0]):
 
@@ -290,11 +288,6 @@ class Tracker:
 
             if cross_encounter:
                 gradient_counter = 0
-                row_width = left_right[1] - left_right[0]
-                if abs((sum_bar_widths / num_row_steps) - row_width) > (self.__target_offset / 2):
-                    return (False, 0, 0, 0)
-                num_row_steps += 1
-                sum_bar_widths += row_width
 
             # If a black pixel was not encountered in this row, mark the bottom
             elif top and not ((min_row_intensity - min_intensity) < self.__threshhold):
@@ -330,9 +323,6 @@ class Tracker:
 
         # [top_left, bottom_left, top_right, bottom_right]
         hbar_bounds = [None, None, None, None]
-
-        sum_bar_widths /= num_row_steps
-        num_col_steps = 1
 
         # Perform a vertical scan from the center until we find the left edge
         up_down = [center_row - column_radius, center_row + column_radius]
@@ -474,11 +464,11 @@ class Tracker:
         left_unit = left_vec / np.linalg.norm(left_vec)
 
         # Check that vectors are about the same length
-        if abs(np.linalg.norm(up_vec) - np.linalg.norm(right_vec)) > self.__target_offset:
+        if abs(np.linalg.norm(up_vec) - np.linalg.norm(right_vec)) > 2 * self.__target_offset:
             return (False, 0, 0, 0)
 
         # Check that vectors are not tiny
-        if np.linalg.norm(down_vec) < 2 * self.__target_offset or np.linalg.norm(left_vec) < 2 * self.__target_offset:
+        if np.linalg.norm(down_vec) < self.__target_offset or np.linalg.norm(left_vec) < self.__target_offset:
             return (False, 0, 0, 0)
 
         # (DEBUG)
