@@ -211,6 +211,9 @@ class Tracker:
         left_right = [initial_left, initial_right]
         gradient_counter = 0
 
+        sum_bar_widths = initial_right - initial_left
+        num_row_steps = 1
+
         # Iterate through the rows until the bottom of the image.
         for r in range(row - self.__target_offset, image.shape[0], scan_offset[0]):
 
@@ -281,18 +284,24 @@ class Tracker:
 
             if cross_encounter:
                 gradient_counter = 0
+                row_width = left_right[1] - left_right[0]
+                if abs((sum_bar_widths / num_row_steps) - row_width) > (self.__target_offset / 2):
+                    return (False, 0, 0, 0)
+                num_row_steps += 1
+                sum_bar_widths += row_width
+
+            # If a black pixel was not encountered in this row, mark the bottom
+            elif top and not ((min_row_intensity - min_intensity) < self.__threshhold):
+                bottom = r - scan_offset[0]
+                vbar_bounds[2] = left_right[0]
+                vbar_bounds[3] = left_right[1]
+                break
+
             else:
                 gradient_counter += 1
 
             if gradient_counter > 1.5 * (initial_right - initial_left):
                 return (False, 0, 0, 0)
-
-            # If a black pixel was not encountered in this row, mark the bottom
-            if top and not ((min_row_intensity - min_intensity) < self.__threshhold) and not cross_encounter:
-                bottom = r - scan_offset[0]
-                vbar_bounds[2] = left_right[0]
-                vbar_bounds[3] = left_right[1]
-                break
 
         # If all of the features of the vertical bar were not detected, the feature
         # is probably not a cross
@@ -315,6 +324,9 @@ class Tracker:
 
         # [top_left, bottom_left, top_right, bottom_right]
         hbar_bounds = [None, None, None, None]
+
+        sum_bar_widths /= num_row_steps
+        num_col_steps = 1
 
         # Perform a vertical scan from the center until we find the left edge
         up_down = [center_row - column_radius, center_row + column_radius]
