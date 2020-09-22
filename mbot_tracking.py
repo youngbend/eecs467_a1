@@ -8,7 +8,7 @@ import cv2
 import tracker
 
 
-tracker = tracker.Tracker((2,2), 3, 45, 20)
+tracker = tracker.Tracker((2,2), 3, 45, 20, 10)
 camera_resolution = [640,480]
 camera_framerate = 10
 scan_period = 100

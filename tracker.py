@@ -106,7 +106,6 @@ class Tracker:
                 depth_offset = self.__targets[i].radius - self.__targets[i].prev_location[2]
                 depth_offset *= depth_offset > 0
                 if self.__targets[i].loss_count:
-                    # TODO
                     interpolation_factor = 3 - 4 * np.exp(-self.__targets[i].loss_count / 2)
                     row_offset *= interpolation_factor
                     col_offset *= interpolation_factor
@@ -126,13 +125,13 @@ class Tracker:
                 continue
 
             # (DEBUG)
-            try:
-                self.__rgb[top,left:right] = [0,255,0]
-                self.__rgb[bottom,left:right] = [0,255,0]
-                self.__rgb[top:bottom,left] = [0,255,0]
-                self.__rgb[top:bottom,right] = [0,255,0]
-            except:
-                None
+            # try:
+            #     self.__rgb[top,left:right] = [0,255,0]
+            #     self.__rgb[bottom,left:right] = [0,255,0]
+            #     self.__rgb[top:bottom,left] = [0,255,0]
+            #     self.__rgb[top:bottom,right] = [0,255,0]
+            # except:
+            #     None
 
             complete = False
             is_found = False
@@ -246,10 +245,10 @@ class Tracker:
                         left_right[0] = c
 
                         # (DEBUG) Color rising edge blue
-                        try:
-                            self.__rgb[r,c] = [0,0,255]
-                        except:
-                            None
+                        # try:
+                        #     self.__rgb[r,c] = [0,0,255]
+                        # except:
+                        #     None
 
                         # Define top for first edge hit
                         if not top:
@@ -263,10 +262,10 @@ class Tracker:
                         left_right[1] = c
 
                         # (DEBUG) Color falling edge green
-                        try:
-                            self.__rgb[r,c] = [0,255,0]
-                        except:
-                            None
+                        # try:
+                        #     self.__rgb[r,c] = [0,255,0]
+                        # except:
+                        #     None
 
                         # Mark the top right corner of the bar
                         if top and not vbar_bounds[1]:
@@ -340,10 +339,10 @@ class Tracker:
                         up_down[0] = r
 
                         # (DEBUG) Color rising edge blue
-                        try:
-                            self.__rgb[r,c] = [0,0,255]
-                        except:
-                            None
+                        # try:
+                        #     self.__rgb[r,c] = [0,0,255]
+                        # except:
+                        #     None
 
                 elif gradient(image[r-scan_offset[0],c], image[r,c]) < -self.__threshhold:
                     cross_encounter = True
@@ -351,10 +350,10 @@ class Tracker:
                         up_down[1] = r
 
                         # (DEBUG) Color falling edge green
-                        try:
-                            self.__rgb[r,c] = [0,255,0]
-                        except:
-                            None
+                        # try:
+                        #     self.__rgb[r,c] = [0,255,0]
+                        # except:
+                        #     None
 
                         continue
 
@@ -390,10 +389,10 @@ class Tracker:
                         up_down[0] = r
 
                         # (DEBUG) Color rising edge blue
-                        try:
-                            self.__rgb[r,c] = [0,0,255]
-                        except:
-                            None
+                        # try:
+                        #     self.__rgb[r,c] = [0,0,255]
+                        # except:
+                        #     None
 
                 elif gradient(image[r-scan_offset[0],c], image[r,c]) < -self.__threshhold:
                     cross_encounter = True
@@ -401,10 +400,10 @@ class Tracker:
                         up_down[1] = r
 
                         # (DEBUG) Color falling edge green
-                        try:
-                            self.__rgb[r,c] = [0,255,0]
-                        except:
-                            None
+                        # try:
+                        #     self.__rgb[r,c] = [0,255,0]
+                        # except:
+                        #     None
 
                         continue
 
@@ -491,13 +490,13 @@ class Tracker:
         # print(left_vec)
 
         # (DEBUG) Draw lines on the bounds
-        try:
-            self.__rgb[top,vbar_bounds[0]:vbar_bounds[1]] = [255,0,0]
-            self.__rgb[bottom,vbar_bounds[2]:vbar_bounds[3]] = [255,0,0]
-            self.__rgb[hbar_bounds[0]:hbar_bounds[1], left] = [255,0,0]
-            self.__rgb[hbar_bounds[2]:hbar_bounds[3], right] = [255,0,0]
-        except:
-            None
+        # try:
+        #     self.__rgb[top,vbar_bounds[0]:vbar_bounds[1]] = [255,0,0]
+        #     self.__rgb[bottom,vbar_bounds[2]:vbar_bounds[3]] = [255,0,0]
+        #     self.__rgb[hbar_bounds[0]:hbar_bounds[1], left] = [255,0,0]
+        #     self.__rgb[hbar_bounds[2]:hbar_bounds[3], right] = [255,0,0]
+        # except:
+        #     None
 
         return (True, center_row, center_column, max(bottom-top, right-left) // 2)
 
